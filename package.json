@@ -2,8 +2,9 @@
   "name": "zhipu-quota",
   "displayName": "智谱API配额监控",
   "description": "在VSCode状态栏显示智谱API的使用率和下次重置时间",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "publisher": "zhipu",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -18,11 +19,11 @@
     "commands": [
       {
         "command": "zhipu-quota.refresh",
-        "title": "刷新智谱API配额"
+        "title": "Zhipu: Refresh Quota"
       },
       {
         "command": "zhipu-quota.setApiKey",
-        "title": "设置智谱API Key"
+        "title": "Zhipu: Set API Key"
       }
     ],
     "configuration": {
