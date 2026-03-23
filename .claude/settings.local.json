@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(code --extensionDevelopmentPath=\"c:\\\\mkk\\\\work\\\\project\\\\zhipu\" --disable-extensions .)",
+      "Bash(vsce package:*)",
+      "Bash(unzip -l zhipu-quota-0.0.1.vsix)",
+      "Bash(powershell -Command \"Expand-Archive -Path zhipu-quota-0.0.1.vsix -DestinationPath temp_check -Force; Get-ChildItem -Recurse temp_check; Remove-Item -Recurse -Force temp_check\")"
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "name": "zhipu-quota",
+  "displayName": "智谱API配额监控",
+  "description": "在VSCode状态栏显示智谱API的使用率和下次重置时间",
+  "version": "0.0.1",
+  "publisher": "zhipu",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "zhipu-quota.refresh",
+        "title": "刷新智谱API配额"
+      },
+      {
+        "command": "zhipu-quota.setApiKey",
+        "title": "设置智谱API Key"
+      }
+    ],
+    "configuration": {
+      "title": "智谱API配额监控",
+      "properties": {
+        "zhipuQuota.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "智谱API密钥"
+        },
+        "zhipuQuota.refreshInterval": {
+          "type": "number",
+          "default": 300,
+          "description": "刷新间隔（秒）"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.x",
+    "@typescript-eslint/parser": "^6.x",
+    "eslint": "^8.x",
+    "typescript": "^5.x"
+  }
+}
