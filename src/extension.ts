@@ -114,10 +114,31 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // 注册切换Token显示单位命令
+    const setTokenUnitCommand = vscode.commands.registerCommand('zhipu-quota.setTokenUnit', async () => {
+        const config = vscode.workspace.getConfiguration('zhipuQuota');
+        const currentUnit = config.get<string>('tokenUnit', 'auto');
+        const options = ['auto', 'raw', 'K', 'M', 'B'];
+        const labels = ['自动', '无单位（原始数值）', 'K（千）', 'M（百万）', 'B（十亿）'];
+        const currentIndex = options.indexOf(currentUnit);
+
+        const items = labels.map((label, i) => ({ label: `${label}${i === currentIndex ? ' ✓' : ''}`, value: options[i] }));
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: '选择Token显示单位'
+        });
+        if (picked) {
+            const unit = picked.value;
+            await config.update('tokenUnit', unit, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage(`Token显示单位已切换为: ${picked}`);
+            fetchAndDisplayQuota();
+        }
+    });
+
     context.subscriptions.push(refreshCommand);
     context.subscriptions.push(setApiKeyCommand);
     context.subscriptions.push(setRefreshIntervalCommand);
     context.subscriptions.push(resetCumulativeCommand);
+    context.subscriptions.push(setTokenUnitCommand);
 
     // 监听配置变化
     context.subscriptions.push(
@@ -281,13 +302,27 @@ function parseDateStr(dateStr: string): number {
 }
 
 function formatTokens(n: number): string {
-    if (n >= 100_000_000) {
-        return (n / 1_000_000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+    const config = vscode.workspace.getConfiguration('zhipuQuota');
+    const unit = config.get<string>('tokenUnit', 'auto');
+
+    switch (unit) {
+        case 'raw':
+            return String(n);
+        case 'K':
+            return Math.round(n / 1_000) + 'K';
+        case 'M':
+            return Math.round(n / 1_000_000) + 'M';
+        case 'B':
+            return Math.round(n / 1_000_000_000) + 'B';
+        default: // auto
+            if (n >= 100_000_000) {
+                return Math.round(n / 1_000_000) + 'M';
+            }
+            if (n >= 1_000_000) {
+                return Math.round(n / 1_000) + 'K';
+            }
+            return String(n);
     }
-    if (n >= 1_000_000) {
-        return (n / 1_000).toFixed(2).replace(/\.?0+$/, '') + 'K';
-    }
-    return String(n);
 }
 
 function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null, totalTokensUsed: number | null) {
@@ -308,7 +343,7 @@ function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null, totalT
 
         statusBarItem.text = `${icon} 智谱: ${percentage}%`;
 
-        let tooltip = `**智谱API配额**\n\n`;
+        let tooltip = `**智谱API配额**\n---\n`;
         tooltip += `${buildProgressBar(percentage)}\n`;
         tooltip += `- **5小时额度**: ${percentage}%\n`;
         if (tokensUsed !== null) {

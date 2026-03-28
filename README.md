@@ -27,6 +27,7 @@
 |--------|------|--------|
 | `zhipuQuota.apiKey` | 智谱API密钥 | - |
 | `zhipuQuota.refreshInterval` | 刷新间隔（秒） | 300 |
+| `zhipuQuota.tokenUnit` | Token显示单位（`auto`/`raw`/`K`/`M`/`B`） | `auto` |
 
 ## 命令
 
@@ -34,3 +35,4 @@
 - `Zhipu: Set API Key` - 设置API密钥
 - `Zhipu: Set Refresh Interval` - 设置刷新间隔
 - `Zhipu: Reset Cumulative Usage` - 清除累计Token用量
+- `Zhipu: 切换Token显示单位` - 切换Token数值的显示单位
