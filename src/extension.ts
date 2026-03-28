@@ -13,6 +13,21 @@ interface QuotaLimit {
     usageDetails?: { modelCode: string; usage: number }[];
 }
 
+interface ModelUsageResponse {
+    code: number;
+    success: boolean;
+    data: {
+        totalUsage?: {
+            totalModelCallCount: number;
+            totalTokensUsage: number;
+        };
+        total_usage?: {
+            totalModelCallCount: number;
+            totalTokensUsage: number;
+        };
+    };
+}
+
 interface QuotaResponse {
     code: number;
     msg: string;
@@ -53,8 +68,34 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // 注册设置刷新间隔命令
+    const setRefreshIntervalCommand = vscode.commands.registerCommand('zhipu-quota.setRefreshInterval', async () => {
+        const config = vscode.workspace.getConfiguration('zhipuQuota');
+        const currentInterval = config.get<number>('refreshInterval', 300);
+
+        const input = await vscode.window.showInputBox({
+            prompt: '请输入刷新间隔（秒）',
+            placeHolder: '例如：300（5分钟）',
+            value: String(currentInterval),
+            validateInput: (value) => {
+                const num = parseInt(value);
+                if (isNaN(num) || num < 10) {
+                    return '请输入大于10的数字';
+                }
+                return null;
+            }
+        });
+
+        if (input) {
+            const newInterval = parseInt(input);
+            await config.update('refreshInterval', newInterval, vscode.ConfigurationTarget.Global);
+            vscode.window.showInformationMessage(`刷新间隔已设置为 ${newInterval} 秒`);
+        }
+    });
+
     context.subscriptions.push(refreshCommand);
     context.subscriptions.push(setApiKeyCommand);
+    context.subscriptions.push(setRefreshIntervalCommand);
 
     // 监听配置变化
     context.subscriptions.push(
@@ -98,7 +139,24 @@ async function fetchAndDisplayQuota() {
         const data = await fetchQuota(apiKey);
 
         if (data.success && data.data.limits) {
-            updateStatusBar(data.data.limits);
+            // 获取今日Token消耗
+            let tokensUsed: number | null = null;
+            const now = new Date();
+            const bjNow = new Date(now.getTime() + 8 * 3600000);
+            const bjMidnight = new Date(Date.UTC(bjNow.getUTCFullYear(), bjNow.getUTCMonth(), bjNow.getUTCDate(), 0, 0, 0));
+            const start = new Date(bjMidnight.getTime() - 8 * 3600000);
+
+            try {
+                const usage = await fetchModelUsage(apiKey, formatBeijingTime(start), formatBeijingTime(now));
+                const total = usage.data?.totalUsage || usage.data?.total_usage;
+                if (total) {
+                    tokensUsed = total.totalTokensUsage;
+                }
+            } catch {
+                // 此接口失败不影响主流程
+            }
+
+            updateStatusBar(data.data.limits, tokensUsed);
         } else {
             statusBarItem.text = '$(error) 智谱API: 获取失败';
             statusBarItem.tooltip = `错误: ${data.msg}`;
@@ -109,30 +167,21 @@ async function fetchAndDisplayQuota() {
     }
 }
 
-function fetchQuota(apiKey: string): Promise<QuotaResponse> {
+function httpsGet(hostname: string, path: string, apiKey: string): Promise<string> {
     return new Promise((resolve, reject) => {
-        const options = {
-            hostname: 'bigmodel.cn',
-            path: '/api/monitor/usage/quota/limit',
+        const req = https.request({
+            hostname,
+            path,
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             }
-        };
-
-        const req = https.request(options, (res) => {
+        }, (res) => {
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-                try {
-                    resolve(JSON.parse(data));
-                } catch (e) {
-                    reject(new Error('JSON解析失败'));
-                }
-            });
+            res.on('end', () => resolve(data));
         });
-
         req.on('error', (e) => { reject(e); });
         req.setTimeout(10000, () => {
             req.destroy();
@@ -142,7 +191,25 @@ function fetchQuota(apiKey: string): Promise<QuotaResponse> {
     });
 }
 
-function updateStatusBar(limits: QuotaLimit[]) {
+function fetchQuota(apiKey: string): Promise<QuotaResponse> {
+    return httpsGet('bigmodel.cn', '/api/monitor/usage/quota/limit', apiKey)
+        .then(data => JSON.parse(data));
+}
+
+function fetchModelUsage(apiKey: string, startTime: string, endTime: string): Promise<ModelUsageResponse> {
+    const s = encodeURIComponent(startTime);
+    const e = encodeURIComponent(endTime);
+    return httpsGet('bigmodel.cn', `/api/monitor/usage/model-usage?startTime=${s}&endTime=${e}`, apiKey)
+        .then(data => JSON.parse(data));
+}
+
+function formatBeijingTime(date: Date): string {
+    const d = new Date(date.getTime() + 8 * 3600000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null) {
     // 查找Token限制
     const tokenLimit = limits.find(l => l.type === 'TOKENS_LIMIT');
 
@@ -152,22 +219,52 @@ function updateStatusBar(limits: QuotaLimit[]) {
 
         // 根据使用率选择图标
         let icon = '$(check)';
-        if (percentage > 80) {
+        if (percentage >= 90) {
             icon = '$(alert)';
-        } else if (percentage > 50) {
+        } else if (percentage >= 60) {
             icon = '$(warning)';
         }
 
         statusBarItem.text = `${icon} 智谱: ${percentage}%`;
 
         let tooltip = `**智谱API配额**\n\n`;
-        tooltip += `- **Token使用率**: ${percentage}%\n`;
+        tooltip += `${buildProgressBar(percentage)}\n\n`;
+        tooltip += `- **5小时额度**: ${percentage}%\n`;
+        if (tokensUsed !== null) {
+            tooltip += `- **今日消耗Token**: ${tokensUsed.toLocaleString()}\n`;
+        }
         tooltip += `- **下次重置**: ${nextReset}\n`;
         tooltip += `\n---\n点击刷新`;
-        statusBarItem.tooltip = new vscode.MarkdownString(tooltip);
+        const md = new vscode.MarkdownString(tooltip);
+        md.supportHtml = true;
+        md.isTrusted = true;
+        statusBarItem.tooltip = md;
     } else {
         statusBarItem.text = '$(question) 智谱: 无数据';
     }
+}
+
+function buildProgressBar(percentage: number): string {
+    const width = 160;
+    const height = 4;
+    const filledWidth = Math.round(width * percentage / 100);
+
+    let barColor: string;
+    let bgColor: string;
+    if (percentage >= 90) {
+        barColor = '#6b4545';
+        bgColor = '#ff6b6b';
+    } else if (percentage >= 60) {
+        barColor = '#6b5a35';
+        bgColor = '#e6c84a';
+    } else {
+        barColor = '#4a7a6d';
+        bgColor = '#7fd9c8';
+    }
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="${bgColor}" rx="2"/><rect width="${filledWidth}" height="${height}" fill="${barColor}" rx="2"/></svg>`;
+    const encoded = Buffer.from(svg).toString('base64');
+    return `![${percentage}%](data:image/svg+xml;base64,${encoded})`;
 }
 
 function formatDate(timestamp: number): string {
