@@ -343,7 +343,7 @@ function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null, totalT
 
         statusBarItem.text = `${icon} 智谱: ${percentage}%`;
 
-        let tooltip = `**智谱API配额**\n---\n`;
+        let tooltip = `智谱API配额\n---\n`;
         tooltip += `${buildProgressBar(percentage)}\n`;
         tooltip += `- **5小时额度**: ${percentage}%\n`;
         if (tokensUsed !== null) {
