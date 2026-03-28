@@ -9,7 +9,8 @@
   - 🟢 绿色：使用率 < 60%
   - 🟡 黄色：使用率 60% ~ 89%
   - 🔴 红色：使用率 ≥ 90%
-- **详细信息**：今日Token消耗、下次重置时间
+- **详细信息**：今日Token消耗、累计Token消耗、下次重置时间
+- **累计统计**：自动累计每日Token消耗，支持最多补齐30天缺失数据
 - **自动刷新**：默认每5分钟自动刷新
 - **手动刷新**：点击状态栏手动刷新
 
@@ -32,3 +33,4 @@
 - `Zhipu: Refresh Quota` - 手动刷新配额信息
 - `Zhipu: Set API Key` - 设置API密钥
 - `Zhipu: Set Refresh Interval` - 设置刷新间隔
+- `Zhipu: Reset Cumulative Usage` - 清除累计Token用量

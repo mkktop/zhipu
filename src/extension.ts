@@ -38,10 +38,17 @@ interface QuotaResponse {
     success: boolean;
 }
 
+interface CumulativeData {
+    lastDate: string;
+    cumulativeUsage: number;
+}
+
 let statusBarItem: vscode.StatusBarItem;
 let refreshInterval: NodeJS.Timeout | undefined;
+let extensionContext: vscode.ExtensionContext;
 
 export function activate(context: vscode.ExtensionContext) {
+    extensionContext = context;
     // 创建状态栏项
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'zhipu-quota.refresh';
@@ -93,9 +100,24 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // 注册清除累计用量命令
+    const resetCumulativeCommand = vscode.commands.registerCommand('zhipu-quota.resetCumulative', async () => {
+        const confirm = await vscode.window.showWarningMessage(
+            '确定要清除累计Token用量吗？',
+            { modal: true },
+            '确定'
+        );
+        if (confirm === '确定') {
+            await extensionContext.globalState.update('zhipuQuota.cumulativeData', undefined);
+            vscode.window.showInformationMessage('累计Token用量已清除');
+            fetchAndDisplayQuota();
+        }
+    });
+
     context.subscriptions.push(refreshCommand);
     context.subscriptions.push(setApiKeyCommand);
     context.subscriptions.push(setRefreshIntervalCommand);
+    context.subscriptions.push(resetCumulativeCommand);
 
     // 监听配置变化
     context.subscriptions.push(
@@ -156,7 +178,45 @@ async function fetchAndDisplayQuota() {
                 // 此接口失败不影响主流程
             }
 
-            updateStatusBar(data.data.limits, tokensUsed);
+            // 累计用量统计
+            const bjToday = getBeijingToday();
+            const storageKey = 'zhipuQuota.cumulativeData';
+            let cumulativeData = extensionContext.globalState.get<CumulativeData>(storageKey);
+
+            if (!cumulativeData) {
+                cumulativeData = { lastDate: bjToday, cumulativeUsage: 0 };
+                await extensionContext.globalState.update(storageKey, cumulativeData);
+            } else if (cumulativeData.lastDate < bjToday) {
+                const lastDateMs = parseDateStr(cumulativeData.lastDate);
+                const todayMs = parseDateStr(bjToday);
+                const diffDays = Math.floor((todayMs - lastDateMs) / (24 * 3600000));
+
+                if (diffDays > 0) {
+                    const cappedStartMs = todayMs - 30 * 24 * 3600000;
+                    const startMs = Math.max(lastDateMs, cappedStartMs);
+                    const bjStart = new Date(startMs + 8 * 3600000);
+                    const pad = (n: number) => String(n).padStart(2, '0');
+                    const startTime = `${bjStart.getUTCFullYear()}-${pad(bjStart.getUTCMonth() + 1)}-${pad(bjStart.getUTCDate())} 00:00:00`;
+
+                    try {
+                        const missingUsage = await fetchModelUsage(apiKey, startTime, bjToday + ' 00:00:00');
+                        const missingTotal = missingUsage.data?.totalUsage || missingUsage.data?.total_usage;
+                        if (missingTotal) {
+                            cumulativeData.cumulativeUsage += missingTotal.totalTokensUsage;
+                        }
+                        cumulativeData.lastDate = bjToday;
+                        await extensionContext.globalState.update(storageKey, cumulativeData);
+                    } catch {
+                        // 补齐失败不影响主流程，下次再试
+                    }
+                }
+            }
+
+            const totalTokensUsed = tokensUsed !== null
+                ? cumulativeData.cumulativeUsage + tokensUsed
+                : (cumulativeData.cumulativeUsage > 0 ? cumulativeData.cumulativeUsage : null);
+
+            updateStatusBar(data.data.limits, tokensUsed, totalTokensUsed);
         } else {
             statusBarItem.text = '$(error) 智谱API: 获取失败';
             statusBarItem.tooltip = `错误: ${data.msg}`;
@@ -209,7 +269,28 @@ function formatBeijingTime(date: Date): string {
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
-function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null) {
+function getBeijingToday(): string {
+    const d = new Date(Date.now() + 8 * 3600000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
+function parseDateStr(dateStr: string): number {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+}
+
+function formatTokens(n: number): string {
+    if (n >= 100_000_000) {
+        return (n / 1_000_000).toFixed(2).replace(/\.?0+$/, '') + 'M';
+    }
+    if (n >= 1_000_000) {
+        return (n / 1_000).toFixed(2).replace(/\.?0+$/, '') + 'K';
+    }
+    return String(n);
+}
+
+function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null, totalTokensUsed: number | null) {
     // 查找Token限制
     const tokenLimit = limits.find(l => l.type === 'TOKENS_LIMIT');
 
@@ -228,10 +309,13 @@ function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null) {
         statusBarItem.text = `${icon} 智谱: ${percentage}%`;
 
         let tooltip = `**智谱API配额**\n\n`;
-        tooltip += `${buildProgressBar(percentage)}\n\n`;
+        tooltip += `${buildProgressBar(percentage)}\n`;
         tooltip += `- **5小时额度**: ${percentage}%\n`;
         if (tokensUsed !== null) {
-            tooltip += `- **今日消耗Token**: ${tokensUsed.toLocaleString()}\n`;
+            tooltip += `- **今日消耗Token**: ${formatTokens(tokensUsed)}\n`;
+        }
+        if (totalTokensUsed !== null) {
+            tooltip += `- **累计消耗Token**: ${formatTokens(totalTokensUsed)}\n`;
         }
         tooltip += `- **下次重置**: ${nextReset}\n`;
         tooltip += `\n---\n点击刷新`;
