@@ -118,8 +118,8 @@ export function activate(context: vscode.ExtensionContext) {
     const setTokenUnitCommand = vscode.commands.registerCommand('zhipu-quota.setTokenUnit', async () => {
         const config = vscode.workspace.getConfiguration('zhipuQuota');
         const currentUnit = config.get<string>('tokenUnit', 'auto');
-        const options = ['auto', 'raw', 'K', 'M', 'B'];
-        const labels = ['自动', '无单位（原始数值）', 'K（千）', 'M（百万）', 'B（十亿）'];
+        const options = ['auto', 'raw', 'K', 'M', 'B', '万', '亿'];
+        const labels = ['自动', '无单位（原始数值）', 'K（千）', 'M（百万）', 'B（十亿）', '万（一万）', '亿（一亿）'];
         const currentIndex = options.indexOf(currentUnit);
 
         const items = labels.map((label, i) => ({ label: `${label}${i === currentIndex ? ' ✓' : ''}`, value: options[i] }));
@@ -314,6 +314,10 @@ function formatTokens(n: number): string {
             return Math.round(n / 1_000_000) + 'M';
         case 'B':
             return Math.round(n / 1_000_000_000) + 'B';
+        case '万':
+            return Math.round(n / 10_000) + '万';
+        case '亿':
+            return Math.round(n / 100_000_000) + '亿';
         default: // auto
             if (n >= 100_000_000) {
                 return Math.round(n / 1_000_000) + 'M';
@@ -343,7 +347,7 @@ function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null, totalT
 
         statusBarItem.text = `${icon} 智谱: ${percentage}%`;
 
-        let tooltip = `智谱API配额\n---\n`;
+        let tooltip = `智谱API配额\n\n`;
         tooltip += `${buildProgressBar(percentage)}\n`;
         tooltip += `- **5小时额度**: ${percentage}%\n`;
         if (tokensUsed !== null) {

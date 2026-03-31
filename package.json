@@ -2,7 +2,7 @@
   "name": "zhipu-quota",
   "displayName": "智谱API配额监控",
   "description": "在VSCode状态栏显示智谱API的使用率和下次重置时间",
-  "version": "1.1.4",
+  "version": "1.1.6",
   "publisher": "mkktop",
   "icon": "icon.png",
   "engines": {
@@ -54,13 +54,15 @@
         "zhipuQuota.tokenUnit": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "raw", "K", "M", "B"],
+          "enum": ["auto", "raw", "K", "M", "B", "万", "亿"],
           "enumDescriptions": [
             "自动选择（默认）",
             "不转换单位，显示原始数值",
             "以千为单位",
             "以百万为单位",
-            "以十亿为单位"
+            "以十亿为单位",
+            "以万为单位",
+            "以亿为单位"
           ],
           "description": "Token显示单位"
         }

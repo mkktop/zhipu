@@ -27,7 +27,7 @@
 |--------|------|--------|
 | `zhipuQuota.apiKey` | 智谱API密钥 | - |
 | `zhipuQuota.refreshInterval` | 刷新间隔（秒） | 300 |
-| `zhipuQuota.tokenUnit` | Token显示单位（`auto`/`raw`/`K`/`M`/`B`） | `auto` |
+| `zhipuQuota.tokenUnit` | Token显示单位（`auto`/`raw`/`K`/`M`/`B`/`万`/`亿`） | `auto` |
 
 ## 命令
 
