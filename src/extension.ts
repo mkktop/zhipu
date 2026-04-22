@@ -129,7 +129,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (picked) {
             const unit = picked.value;
             await config.update('tokenUnit', unit, vscode.ConfigurationTarget.Global);
-            vscode.window.showInformationMessage(`Token显示单位已切换为: ${picked}`);
+            vscode.window.showInformationMessage(`Token显示单位已切换为: ${picked.label.replace(' ✓', '')}`);
             fetchAndDisplayQuota();
         }
     });
@@ -305,25 +305,31 @@ function formatTokens(n: number): string {
     const config = vscode.workspace.getConfiguration('zhipuQuota');
     const unit = config.get<string>('tokenUnit', 'auto');
 
+    const formatCompact = (value: number, divisor: number, suffix: string) => {
+        const compact = value / divisor;
+        const digits = compact >= 10 ? 0 : 1;
+        return compact.toFixed(digits).replace(/\.0$/, '') + suffix;
+    };
+
     switch (unit) {
         case 'raw':
             return String(n);
         case 'K':
-            return Math.round(n / 1_000) + 'K';
+            return formatCompact(n, 1_000, 'K');
         case 'M':
-            return Math.round(n / 1_000_000) + 'M';
+            return formatCompact(n, 1_000_000, 'M');
         case 'B':
-            return Math.round(n / 1_000_000_000) + 'B';
+            return formatCompact(n, 1_000_000_000, 'B');
         case '万':
-            return Math.round(n / 10_000) + '万';
+            return formatCompact(n, 10_000, '万');
         case '亿':
-            return Math.round(n / 100_000_000) + '亿';
+            return formatCompact(n, 100_000_000, '亿');
         default: // auto
             if (n >= 100_000_000) {
-                return Math.round(n / 1_000_000) + 'M';
+                return formatCompact(n, 100_000_000, '亿');
             }
-            if (n >= 1_000_000) {
-                return Math.round(n / 1_000) + 'K';
+            if (n >= 10_000) {
+                return formatCompact(n, 10_000, '万');
             }
             return String(n);
     }
@@ -345,47 +351,52 @@ function updateStatusBar(limits: QuotaLimit[], tokensUsed: number | null, totalT
             icon = '$(warning)';
         }
 
-        statusBarItem.text = `${icon} 智谱: ${percentage}%`;
+        statusBarItem.text = `${icon} 智谱额度 ${percentage}%`;
 
-        let tooltip = `智谱API配额\n\n`;
+        let tooltip = `智谱 API 配额\n\n`;
         tooltip += `${buildProgressBar(percentage)}\n`;
-        tooltip += `- **5小时额度**: ${percentage}%\n`;
+        tooltip += `- **5小时额度已用**: ${percentage}%\n`;
+        if (typeof tokenLimit.remaining === 'number') {
+            tooltip += `- **剩余额度**: ${formatTokens(tokenLimit.remaining)} Token\n`;
+        }
         if (tokensUsed !== null) {
-            tooltip += `- **今日消耗Token**: ${formatTokens(tokensUsed)}\n`;
+            tooltip += `- **今日消耗**: ${formatTokens(tokensUsed)} Token\n`;
         }
         if (totalTokensUsed !== null) {
-            tooltip += `- **累计消耗Token**: ${formatTokens(totalTokensUsed)}\n`;
+            tooltip += `- **累计消耗**: ${formatTokens(totalTokensUsed)} Token\n`;
         }
         tooltip += `- **下次重置**: ${nextReset}\n`;
-        tooltip += `\n---\n点击刷新`;
+        tooltip += `\n---\n点击刷新配额`;
         const md = new vscode.MarkdownString(tooltip);
         md.supportHtml = true;
         md.isTrusted = true;
         statusBarItem.tooltip = md;
     } else {
         statusBarItem.text = '$(question) 智谱: 无数据';
+        statusBarItem.tooltip = '未找到 Token 额度数据，点击刷新';
     }
 }
 
 function buildProgressBar(percentage: number): string {
     const width = 160;
-    const height = 4;
-    const filledWidth = Math.round(width * percentage / 100);
+    const height = 6;
+    const normalizedPercentage = Math.max(0, Math.min(100, percentage));
+    const filledWidth = Math.round(width * normalizedPercentage / 100);
 
     let barColor: string;
     let bgColor: string;
     if (percentage >= 90) {
-        barColor = '#6b4545';
-        bgColor = '#ff6b6b';
+        barColor = '#f85149';
+        bgColor = '#3f1d22';
     } else if (percentage >= 60) {
-        barColor = '#6b5a35';
-        bgColor = '#e6c84a';
+        barColor = '#d29922';
+        bgColor = '#3f3316';
     } else {
-        barColor = '#4a7a6d';
-        bgColor = '#7fd9c8';
+        barColor = '#3fb950';
+        bgColor = '#193a24';
     }
 
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="${bgColor}" rx="2"/><rect width="${filledWidth}" height="${height}" fill="${barColor}" rx="2"/></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" fill="${bgColor}" rx="3"/><rect width="${filledWidth}" height="${height}" fill="${barColor}" rx="3"/></svg>`;
     const encoded = Buffer.from(svg).toString('base64');
     return `![${percentage}%](data:image/svg+xml;base64,${encoded})`;
 }

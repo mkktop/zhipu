@@ -2,7 +2,7 @@
   "name": "zhipu-quota",
   "displayName": "智谱API配额监控",
   "description": "在VSCode状态栏显示智谱API的使用率和下次重置时间",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "publisher": "mkktop",
   "icon": "icon.png",
   "engines": {
